@@ -1,4 +1,4 @@
--- EVVO.JAILBREAK Ultimate V4.1 - Navigation & Tools Expansion
+-- EVVO.JAILBREAK Ultimate V4.3 - GUI Reliability Fix
 -- OWNED BY EVVO | Client-side Luau
 local Players = game:GetService('Players')
 local RunService = game:GetService('RunService')
@@ -6,12 +6,27 @@ local UIS = game:GetService('UserInputService')
 local Stats = game:GetService('Stats')
 local localPlayer = Players.LocalPlayer
 assert(localPlayer, 'LocalPlayer unavailable')
-local rootGui = (gethui and gethui()) or game:GetService('CoreGui')
-local old = rootGui:FindFirstChild('EVVO_UltimateV4')
-if old then old:Destroy() end
-if _G.EVVO_V4_CLEANUP then pcall(_G.EVVO_V4_CLEANUP) end
+-- Use the same PlayerGui container that passed the Madium GUI test.
+-- Clean up earlier versions even if they were parented to CoreGui/gethui().
+if type(_G.EVVO_V4_CLEANUP) == 'function' then
+    local ok, err = pcall(_G.EVVO_V4_CLEANUP)
+    if not ok then warn('[EVVO] Previous cleanup failed:', err) end
+end
+local rootGui = localPlayer:WaitForChild('PlayerGui', 10)
+assert(rootGui, 'PlayerGui did not become available')
+for _, parent in ipairs({rootGui, game:GetService('CoreGui')}) do
+    local old = parent:FindFirstChild('EVVO_UltimateV4')
+    if old then pcall(function() old:Destroy() end) end
+end
+if type(gethui) == 'function' then
+    local ok, parent = pcall(gethui)
+    if ok and typeof(parent) == 'Instance' then
+        local old = parent:FindFirstChild('EVVO_UltimateV4')
+        if old then pcall(function() old:Destroy() end) end
+    end
+end
 local connections, highlights = {}, {}
-local function connect(signal,fn) local c=signal:Connect(fn); table.insert(connections,c); return c end
+local function connect(signal,fn) local c=signal:Connect(function(...) local ok,err=pcall(fn,...); if not ok then warn('[EVVO callback]',err) end end); table.insert(connections,c); return c end
 local state={esp=true,names=true,distance=true,teamFilter=false,walk=false,jump=false,infiniteJump=false,sprint=false,walkSpeed=24,jumpPower=70,espRange=800,opacity=0.45,sprintMultiplier=1.5, boxes=true,health=true,teamColors=true,showPolice=true,showCriminal=true,showPrisoner=true,espRefresh=0.15, radar=true,radarRange=500,radarSize=140,coords=true,alerts=false,alertRange=120,lowGraphics=false,autoJump=false,autoJumpInterval=1.5,autoSprint=false,gravityEnabled=false,gravityValue=196.2,highJump=false, bunnyHop=false, speedHud=true,playerCount=true, showBounty=false, showVelocity=false, outlines=true, rainbow=false, search=""}
 local savedPosition
 local waypoints={}
@@ -27,7 +42,7 @@ local originalHumanoidValues=setmetatable({},{__mode='k'})
 local radarDots={}
 local lastError='none'
 local function safe(fn) local ok,err=pcall(fn); if not ok then lastError=tostring(err);warn('[EVVO]',err) end end
-local gui=Instance.new('ScreenGui'); gui.Name='EVVO_UltimateV4'; gui.ResetOnSpawn=false; gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.Parent=rootGui
+local gui=Instance.new('ScreenGui'); gui.Name='EVVO_UltimateV4'; gui.ResetOnSpawn=false; gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.DisplayOrder=999; gui.IgnoreGuiInset=true; gui.Enabled=true; gui.Parent=rootGui
 local function make(class,props,parent) local o=Instance.new(class); for k,v in pairs(props) do o[k]=v end; o.Parent=parent; return o end
 local main=make('Frame',{Size=UDim2.fromOffset(490,385),Position=UDim2.new(0.5,-245,0.5,-192),BackgroundColor3=Color3.fromRGB(13,13,18),BorderSizePixel=0,Active=true},gui)
 make('UICorner',{CornerRadius=UDim.new(0,12)},main)
@@ -37,6 +52,18 @@ make('UICorner',{CornerRadius=UDim.new(0,12)},header)
 make('TextLabel',{Text='EVVO.JAILBREAK  //  ULTIMATE V4',TextColor3=Color3.fromRGB(255,235,238),Font=Enum.Font.GothamBold,TextSize=16,BackgroundTransparency=1,Size=UDim2.new(1,-95,1,0),Position=UDim2.fromOffset(14,0),TextXAlignment=Enum.TextXAlignment.Left},header)
 local close=make('TextButton',{Text='X',TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=16,Size=UDim2.fromOffset(34,30),Position=UDim2.new(1,-39,0,9),BackgroundColor3=Color3.fromRGB(125,30,44)},header)
 make('UICorner',{CornerRadius=UDim.new(0,7)},close)
+-- Persistent restore control stays visible when the main window is minimized.
+local restore=make('TextButton',{Name='Restore',Text='EVVO  +',TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=13,Size=UDim2.fromOffset(100,36),Position=UDim2.new(0,16,0,72),BackgroundColor3=Color3.fromRGB(125,30,44),Visible=false,ZIndex=20},gui)
+make('UICorner',{CornerRadius=UDim.new(0,8)},restore)
+local minimize=make('TextButton',{Name='Minimize',Text='—',TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=17,Size=UDim2.fromOffset(34,30),Position=UDim2.new(1,-78,0,9),BackgroundColor3=Color3.fromRGB(65,32,42)},header)
+make('UICorner',{CornerRadius=UDim.new(0,7)},minimize)
+local function setMenuVisible(visible)
+    main.Visible=visible
+    restore.Visible=not visible
+end
+connect(minimize.MouseButton1Click,function() setMenuVisible(false) end)
+connect(restore.MouseButton1Click,function() setMenuVisible(true) end)
+
 local tabs=make('ScrollingFrame',{Size=UDim2.new(0,125,1,-60),Position=UDim2.fromOffset(8,54),BackgroundTransparency=1,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)},main)
 local content=make('ScrollingFrame',{Size=UDim2.new(1,-151,1,-69),Position=UDim2.fromOffset(143,57),BackgroundColor3=Color3.fromRGB(21,21,28),BorderSizePixel=0,ScrollBarThickness=3,CanvasSize=UDim2.fromOffset(0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y},main)
 make('UICorner',{CornerRadius=UDim.new(0,8)},content)
@@ -94,7 +121,7 @@ pages.Diagnostics=function()
  local c; c=connect(RunService.RenderStepped,function() if not fps.Parent then c:Disconnect();return end; frames=frames+1; local now=os.clock(); if now-last>=1 then fps.Text='FPS: '..math.floor(frames/(now-last)+0.5); frames=0;last=now end end)
  button('Print diagnostics',function() print('[EVVO] Players:',#Players:GetPlayers(),'GUI:',gui.Parent,'ESP:',state.esp) end)
 end
-pages.About=function() label('EVVO.JAILBREAK ULTIMATE V4.2'); label('Developer: EVVO | OWNED BY EVVO'); label('Features are client-side and not verified in Madium.'); button('Disable all features',function() for _,k in ipairs({'esp','walk','jump','infiniteJump','sprint'}) do state[k]=false end end) end
+pages.About=function() label('EVVO.JAILBREAK ULTIMATE V4.3'); label('Developer: EVVO | OWNED BY EVVO'); label('Features are client-side and not verified in Madium.'); button('Disable all features',function() for _,k in ipairs({'esp','walk','jump','infiniteJump','sprint'}) do state[k]=false end end) end
 
 -- Additional modules: these rely only on documented Roblox client objects.
 local radarGui=make('Frame',{Name='Radar',Size=UDim2.fromOffset(160,180),Position=UDim2.new(1,-178,0,20),BackgroundColor3=Color3.fromRGB(15,15,21),BorderSizePixel=0,Visible=false},gui)
@@ -301,7 +328,7 @@ pages.Visuals=function()
  section('Appearance')
  slider('GUI scale','uiScale',0.7,1.3,0.05)
  button('Apply GUI scale',function() uiScaler.Scale=state.uiScale end)
- button('Minimize / restore menu',function() main.Visible=false;print('[EVVO] Press '..hotkeyMenu.Name..' to reopen') end)
+ button('Minimize / restore menu',function() setMenuVisible(false);print('[EVVO] Press '..hotkeyMenu.Name..' or click EVVO + to reopen') end)
  button('Show overlay status',function() print('[EVVO] ESP:',state.esp,'Radar:',state.radar,'VehicleHUD:',state.showVehicleHUD) end)
 end
 pages.Vehicles=function()
@@ -449,7 +476,7 @@ connect(RunService.Heartbeat,function(dt)
  statusGui.Text=table.concat(bits,' | ')
  if state.alerts and root and os.clock()-alertAt>state.alertCooldown then for _,p in ipairs(Players:GetPlayers()) do if p~=localPlayer and p.Team and p.Team.Name:lower():find('police') then local r=p.Character and p.Character:FindFirstChild('HumanoidRootPart');if r and (r.Position-root.Position).Magnitude<=state.alertRange then alertAt=os.clock();warn('[EVVO] Police nearby: '..p.Name);break end end end end
 end)
-connect(UIS.InputBegan,function(input,processed) if processed then return end;if input.KeyCode==hotkeyMenu then main.Visible=not main.Visible elseif input.KeyCode==hotkeyEmergency then if _G.EVVO_V4_CLEANUP then _G.EVVO_V4_CLEANUP() end end end)
+connect(UIS.InputBegan,function(input,processed) if processed then return end;if input.KeyCode==hotkeyMenu then setMenuVisible(not main.Visible) elseif input.KeyCode==hotkeyEmergency then if _G.EVVO_V4_CLEANUP then _G.EVVO_V4_CLEANUP() end end end)
 connect(UIS.JumpRequest,function() jumpCount=jumpCount+1;if state.infiniteJump then local hum=localPlayer.Character and localPlayer.Character:FindFirstChildOfClass('Humanoid');if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
 local function cleanup()
  cameraReset()
@@ -466,4 +493,4 @@ end
 _G.EVVO_V4_CLEANUP=cleanup
 connect(close.MouseButton1Click,cleanup)
 show('ESP')
-print('[EVVO.JAILBREAK] Ultimate V4.2 Expanded Client Tools loaded')
+print('[EVVO.JAILBREAK] V4.3 GUI loaded into PlayerGui:',gui.Parent:GetFullName())
