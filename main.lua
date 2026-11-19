@@ -37,7 +37,7 @@ make('UICorner',{CornerRadius=UDim.new(0,12)},header)
 make('TextLabel',{Text='EVVO.JAILBREAK  //  ULTIMATE V4',TextColor3=Color3.fromRGB(255,235,238),Font=Enum.Font.GothamBold,TextSize=16,BackgroundTransparency=1,Size=UDim2.new(1,-95,1,0),Position=UDim2.fromOffset(14,0),TextXAlignment=Enum.TextXAlignment.Left},header)
 local close=make('TextButton',{Text='X',TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=16,Size=UDim2.fromOffset(34,30),Position=UDim2.new(1,-39,0,9),BackgroundColor3=Color3.fromRGB(125,30,44)},header)
 make('UICorner',{CornerRadius=UDim.new(0,7)},close)
-local tabs=make('Frame',{Size=UDim2.new(0,125,1,-60),Position=UDim2.fromOffset(8,54),BackgroundTransparency=1},main)
+local tabs=make('ScrollingFrame',{Size=UDim2.new(0,125,1,-60),Position=UDim2.fromOffset(8,54),BackgroundTransparency=1,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)},main)
 local content=make('ScrollingFrame',{Size=UDim2.new(1,-151,1,-69),Position=UDim2.fromOffset(143,57),BackgroundColor3=Color3.fromRGB(21,21,28),BorderSizePixel=0,ScrollBarThickness=3,CanvasSize=UDim2.fromOffset(0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y},main)
 make('UICorner',{CornerRadius=UDim.new(0,8)},content)
 local layout=make('UIListLayout',{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder},content)
@@ -71,6 +71,7 @@ local function slider(title,key,low,high,step)
  refresh()
 end
 local pages={}
+local show
 local function section(text) label('── '..text..' ──') end
 pages.ESP=function()
  label('Client-side player highlights. Visible range and filters are adjustable.')
@@ -93,7 +94,7 @@ pages.Diagnostics=function()
  local c; c=connect(RunService.RenderStepped,function() if not fps.Parent then c:Disconnect();return end; frames=frames+1; local now=os.clock(); if now-last>=1 then fps.Text='FPS: '..math.floor(frames/(now-last)+0.5); frames=0;last=now end end)
  button('Print diagnostics',function() print('[EVVO] Players:',#Players:GetPlayers(),'GUI:',gui.Parent,'ESP:',state.esp) end)
 end
-pages.About=function() label('EVVO.JAILBREAK ULTIMATE V4 — Phase 1'); label('Developer: EVVO | OWNED BY EVVO'); label('Features are client-side and not verified in Madium.'); button('Disable all features',function() for _,k in ipairs({'esp','walk','jump','infiniteJump','sprint'}) do state[k]=false end end) end
+pages.About=function() label('EVVO.JAILBREAK ULTIMATE V4.2'); label('Developer: EVVO | OWNED BY EVVO'); label('Features are client-side and not verified in Madium.'); button('Disable all features',function() for _,k in ipairs({'esp','walk','jump','infiniteJump','sprint'}) do state[k]=false end end) end
 
 -- Additional modules: these rely only on documented Roblox client objects.
 local radarGui=make('Frame',{Name='Radar',Size=UDim2.fromOffset(160,180),Position=UDim2.new(1,-178,0,20),BackgroundColor3=Color3.fromRGB(15,15,21),BorderSizePixel=0,Visible=false},gui)
@@ -259,10 +260,130 @@ pages.Profiles=function()
   print('[EVVO] Imported '..applied..' settings')
  end)
 end
+
+-- V4.2 extension: informational overlays, vehicle telemetry, alert controls and hotkeys.
+-- No unverified server remotes, combat automation or robbery claims.
+state.showCompass = state.showCompass ~= false
+state.showPing = state.showPing ~= false
+state.showUptime = state.showUptime or false
+state.showNearest = state.showNearest or false
+state.showVehicleHUD = state.showVehicleHUD or false
+state.showRadar = state.radar
+state.alertCooldown = state.alertCooldown or 8
+state.vehicleHudScale = state.vehicleHudScale or 1
+state.showCoords = state.coords
+state.showSpeed = state.speedHud
+state.uiScale = state.uiScale or 1
+local hotkeyMenu = Enum.KeyCode.RightShift
+local hotkeyEmergency = Enum.KeyCode.End
+local uiScaler=make('UIScale',{Scale=state.uiScale},main)
+local vehicleLabel=make('TextLabel',{Name='VehicleHUD',Size=UDim2.fromOffset(320,48),Position=UDim2.new(1,-335,1,-64),BackgroundColor3=Color3.fromRGB(24,14,21),BackgroundTransparency=0.1,TextColor3=Color3.fromRGB(255,215,220),TextSize=12,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,Visible=false,Text='EVVO // VEHICLE'},gui)
+make('UICorner',{CornerRadius=UDim.new(0,8)},vehicleLabel)
+local lastVehicleSpeed=0
+local lastVehicleTick=os.clock()
+local nearestPoliceName='none'
+local nearestPoliceDistance=math.huge
+local function getVehicleSeat()
+ local hum=localPlayer.Character and localPlayer.Character:FindFirstChildOfClass('Humanoid')
+ local seat=hum and hum.SeatPart
+ if seat and (seat:IsA('VehicleSeat') or seat:IsA('Seat')) then return seat end
+ return nil
+end
+pages.Visuals=function()
+ section('Overlay controls')
+ toggle('Compass','showCompass')
+ toggle('Ping in HUD','showPing')
+ toggle('Uptime in HUD','showUptime')
+ toggle('Nearest police in HUD','showNearest')
+ toggle('Position coordinates','coords')
+ toggle('Movement speed','speedHud')
+ toggle('Player count','playerCount')
+ section('Appearance')
+ slider('GUI scale','uiScale',0.7,1.3,0.05)
+ button('Apply GUI scale',function() uiScaler.Scale=state.uiScale end)
+ button('Minimize / restore menu',function() main.Visible=false;print('[EVVO] Press '..hotkeyMenu.Name..' to reopen') end)
+ button('Show overlay status',function() print('[EVVO] ESP:',state.esp,'Radar:',state.radar,'VehicleHUD:',state.showVehicleHUD) end)
+end
+pages.Vehicles=function()
+ section('Vehicle telemetry (read-only)')
+ label('Uses your current seat and Roblox physics velocity. No vehicle handling modifications.')
+ toggle('Show vehicle HUD','showVehicleHUD')
+ slider('HUD scale','vehicleHudScale',0.7,1.5,0.05)
+ local seat=getVehicleSeat()
+ if seat then
+  label('Seat: '..seat.Name)
+  label('Vehicle model: '..(seat:FindFirstAncestorOfClass('Model') and seat:FindFirstAncestorOfClass('Model').Name or 'unknown'))
+  label(string.format('Current speed: %.1f studs/s',seat.AssemblyLinearVelocity.Magnitude))
+  if seat:IsA('VehicleSeat') then label('Throttle: '..seat.ThrottleFloat..' | Steer: '..seat.SteerFloat) end
+ else label('Not seated in a vehicle') end
+ button('Refresh vehicle information',function() show('Vehicles') end)
+ button('Print vehicle diagnostic',function()
+  local v=getVehicleSeat()
+  if v then print('[EVVO VEHICLE]',v:GetFullName(),'speed',v.AssemblyLinearVelocity.Magnitude) else print('[EVVO] Not in vehicle') end
+ end)
+end
+pages.Alerts=function()
+ section('Nearby police warnings')
+ toggle('Enable police warnings','alerts')
+ slider('Warning range','alertRange',25,600,25)
+ slider('Warning cooldown','alertCooldown',2,30,1)
+ toggle('Nearest police HUD','showNearest')
+ label('Nearest police: '..nearestPoliceName)
+ label(nearestPoliceDistance<math.huge and ('Distance: '..math.floor(nearestPoliceDistance)..' studs') or 'Distance: unknown')
+ button('Refresh proximity data',function() show('Alerts') end)
+ section('Teams')
+ for _,team in ipairs(game:GetService('Teams'):GetTeams()) do
+  local n=0
+  for _,p in ipairs(Players:GetPlayers()) do if p.Team==team then n=n+1 end end
+  label(team.Name..': '..n..' players')
+ end
+end
+pages.Hotkeys=function()
+ section('Hotkeys')
+ label('Menu: '..hotkeyMenu.Name..' | Emergency cleanup: '..hotkeyEmergency.Name)
+ label('Change keys from the choices below. Settings apply for this session.')
+ for _,key in ipairs({Enum.KeyCode.RightShift,Enum.KeyCode.Insert,Enum.KeyCode.F4,Enum.KeyCode.Home}) do
+  button('Set menu key: '..key.Name,function() if key~=hotkeyEmergency then hotkeyMenu=key;print('[EVVO] Menu key: '..key.Name) end end)
+ end
+ for _,key in ipairs({Enum.KeyCode.End,Enum.KeyCode.Delete,Enum.KeyCode.F8}) do
+  button('Set emergency key: '..key.Name,function() if key~=hotkeyMenu then hotkeyEmergency=key;print('[EVVO] Emergency key: '..key.Name) end end)
+ end
+ button('Reset hotkeys',function() hotkeyMenu=Enum.KeyCode.RightShift;hotkeyEmergency=Enum.KeyCode.End end)
+end
+connect(RunService.Heartbeat,function(dt)
+ local now=os.clock()
+ if now-lastVehicleTick>=0.35 then
+  local seat=getVehicleSeat()
+  vehicleLabel.Visible=state.showVehicleHUD and seat~=nil
+  if seat then
+   local speed=seat.AssemblyLinearVelocity.Magnitude
+   local acceleration=(speed-lastVehicleSpeed)/math.max(now-lastVehicleTick,0.01)
+   vehicleLabel.Text=string.format('EVVO // %s | %.0f studs/s | accel %.1f',seat.Name,speed,acceleration)
+   lastVehicleSpeed=speed
+  else lastVehicleSpeed=0 end
+  vehicleLabel.Size=UDim2.fromOffset(math.floor(320*state.vehicleHudScale),math.floor(48*state.vehicleHudScale))
+  lastVehicleTick=now
+ end
+end)
+connect(RunService.Heartbeat,function(dt)
+ if not state.showNearest and not state.alerts then return end
+ local root=rootOf(localPlayer)
+ if not root then return end
+ local best=math.huge
+ local name='none'
+ for _,p in ipairs(Players:GetPlayers()) do
+  if p~=localPlayer and p.Team and p.Team.Name:lower():find('police') then
+   local other=rootOf(p)
+   if other then local d=(other.Position-root.Position).Magnitude;if d<best then best=d;name=p.DisplayName end end
+  end
+ end
+ nearestPoliceName=name;nearestPoliceDistance=best
+end)
+
 local active='ESP'
-local function show(name) active=name;clearContent();pages[name]() end
-local tabLayout=make('UIListLayout',{Padding=UDim.new(0,8)},tabs)
-for _,name in ipairs({'ESP','Movement','Radar','Players','Navigation','Spectate','Telemetry','Profiles','World','Settings','Diagnostics','About'}) do
+show=function(name) if not pages[name] then return end; active=name;clearContent();pages[name]() end
+local tabLayout=make('UIListLayout',{Padding=UDim.new(0,6)},tabs)
+for _,name in ipairs({'ESP','Movement','Radar','Players','Navigation','Spectate','Telemetry','Profiles','World','Settings','Diagnostics','Visuals','Vehicles','Alerts','Hotkeys','About'}) do
  local b=make('TextButton',{Text=name,Size=UDim2.new(1,0,0,37),BackgroundColor3=Color3.fromRGB(64,25,35),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=13},tabs)
  make('UICorner',{CornerRadius=UDim.new(0,7)},b)
  connect(b.MouseButton1Click,function() show(name) end)
@@ -305,6 +426,8 @@ connect(RunService.Heartbeat,function(dt)
  local ch=localPlayer.Character;local hum=ch and ch:FindFirstChildOfClass('Humanoid')
  if hum then
   if not originalHumanoidValues[hum] then originalHumanoidValues[hum]={walk=hum.WalkSpeed,jump=hum.JumpPower} end
+  if not state.walk and not state.autoSprint then hum.WalkSpeed=originalHumanoidValues[hum].walk end
+  if not state.jump then hum.JumpPower=originalHumanoidValues[hum].jump end
   if state.walk or state.autoSprint then hum.WalkSpeed=(state.walk and state.walkSpeed or originalHumanoidValues[hum].walk)*( (state.autoSprint or (state.sprint and UIS:IsKeyDown(Enum.KeyCode.LeftShift))) and state.sprintMultiplier or 1) end
   if state.jump then hum.UseJumpPower=true;hum.JumpPower=state.jumpPower end
   if state.autoJump and os.clock()-lastJump>state.autoJumpInterval and hum.FloorMaterial~=Enum.Material.Air then lastJump=os.clock();hum.Jump=true end
@@ -318,11 +441,15 @@ connect(RunService.Heartbeat,function(dt)
  local bits={' EVVO'}
  if state.speedHud and root then table.insert(bits,math.floor(root.AssemblyLinearVelocity.Magnitude)..' studs/s') end
  if state.playerCount then table.insert(bits,#Players:GetPlayers()..' players') end
+ if state.showUptime then table.insert(bits,math.floor(os.clock()-started)..'s') end
+ if state.showPing then local ok,p=pcall(function() return Stats.Network.ServerStatsItem['Data Ping']:GetValueString() end);if ok then table.insert(bits,tostring(p)) end end
+ if state.showCompass and root then local look=root.CFrame.LookVector;table.insert(bits,math.floor((math.deg(math.atan2(-look.X,-look.Z))+360)%360)..'°') end
+ if state.showNearest and nearestPoliceDistance<math.huge then table.insert(bits,'Police '..math.floor(nearestPoliceDistance)..'st') end
  if state.coords and root then local p=root.Position;table.insert(bits,string.format('XYZ %.0f %.0f %.0f',p.X,p.Y,p.Z)) end
  statusGui.Text=table.concat(bits,' | ')
- if state.alerts and root and os.clock()-alertAt>8 then for _,p in ipairs(Players:GetPlayers()) do if p~=localPlayer and p.Team and p.Team.Name:lower():find('police') then local r=p.Character and p.Character:FindFirstChild('HumanoidRootPart');if r and (r.Position-root.Position).Magnitude<=state.alertRange then alertAt=os.clock();warn('[EVVO] Police nearby: '..p.Name);break end end end end
+ if state.alerts and root and os.clock()-alertAt>state.alertCooldown then for _,p in ipairs(Players:GetPlayers()) do if p~=localPlayer and p.Team and p.Team.Name:lower():find('police') then local r=p.Character and p.Character:FindFirstChild('HumanoidRootPart');if r and (r.Position-root.Position).Magnitude<=state.alertRange then alertAt=os.clock();warn('[EVVO] Police nearby: '..p.Name);break end end end end
 end)
-connect(UIS.InputBegan,function(input,processed) if processed then return end;if input.KeyCode==Enum.KeyCode.RightShift then main.Visible=not main.Visible elseif input.KeyCode==Enum.KeyCode.End then if _G.EVVO_V4_CLEANUP then _G.EVVO_V4_CLEANUP() end end end)
+connect(UIS.InputBegan,function(input,processed) if processed then return end;if input.KeyCode==hotkeyMenu then main.Visible=not main.Visible elseif input.KeyCode==hotkeyEmergency then if _G.EVVO_V4_CLEANUP then _G.EVVO_V4_CLEANUP() end end end)
 connect(UIS.JumpRequest,function() jumpCount=jumpCount+1;if state.infiniteJump then local hum=localPlayer.Character and localPlayer.Character:FindFirstChildOfClass('Humanoid');if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
 local function cleanup()
  cameraReset()
@@ -339,4 +466,4 @@ end
 _G.EVVO_V4_CLEANUP=cleanup
 connect(close.MouseButton1Click,cleanup)
 show('ESP')
-print('[EVVO.JAILBREAK] Ultimate V4.1 Navigation and Tools loaded')
+print('[EVVO.JAILBREAK] Ultimate V4.2 Expanded Client Tools loaded')
