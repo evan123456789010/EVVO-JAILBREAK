@@ -1,5 +1,5 @@
 --[[
- EVVO HUB // UNIVERSAL EDITION 1.0.0
+ EVVO HUB // UNIVERSAL EDITION 2.0.0
  OWNED BY EVVO
  Single-file Luau hub, designed for user-hosted GitHub Raw loading.
  Catalog entries are NOT verified game-specific cheats.
@@ -21,7 +21,7 @@ local pg = player:WaitForChild("PlayerGui", 10)
 assert(pg, "EVVO HUB: PlayerGui unavailable")
 
 local BASE = "EVVO_HUB_UNIVERSAL_V1"
-local VERSION = "1.0.0"
+local VERSION = "2.0.0"
 local CONFIG_PATH = "EVVO_HUB_v1_config.json"
 local alive, started = true, os.clock()
 local connections, visuals, originals, noClipParts = {}, {}, setmetatable({}, {__mode="k"}), {}
@@ -55,6 +55,12 @@ local default = {
  worldESP=false, worldKeyword="chest", worldRange=450, worldLimit=40,
  hud=true, fps=true, ping=true, coords=false, playerCount=true,
  showClock=true, lowFX=false, updateHz=30, notifications=true,
+ packESP=false, packAlerts=false, packAutoPrompt=false, packPathAssist=false,
+ packAutoEquip=false, packEquipDelay=5, packToolKeyword="",
+ packDistance=600, packOpacity=.42, packMax=45, packScanHz=.25,
+ packInteractRange=14, packInteractDelay=1.4, packAlertRange=80,
+ packScanLimit=12500, packShowLabels=true, packShowDistances=true,
+ packProfiles={}, packFocus="", packProfilePreset="Balanced",
  favorites={}, bindings={}, points={}, customNotes={},
 }
 local state = {}
@@ -211,7 +217,7 @@ make("UIGradient",top,{Color=ColorSequence.new({
 make("Frame",top,{BackgroundColor3=accent,BorderSizePixel=0,
  Position=UDim2.fromOffset(17,18),Size=UDim2.fromOffset(4,28),ZIndex=23})
 text(top,"EVVO  //  HUB",21,true,{Position=UDim2.fromOffset(32,5),Size=UDim2.fromOffset(370,35),ZIndex=23})
-text(top,"UNIVERSAL EDITION     •     OWNED BY EVVO",10,true,{Position=UDim2.fromOffset(33,35),Size=UDim2.fromOffset(360,20),TextColor3=C.muted,ZIndex=23})
+text(top,"71 GAME PACKS     •     OWNED BY EVVO",10,true,{Position=UDim2.fromOffset(33,35),Size=UDim2.fromOffset(360,20),TextColor3=C.muted,ZIndex=23})
 local function headerButton(symbol,x,w,bg)
  local b=rounded(make("TextButton",top,{Text=symbol,Font=Enum.Font.GothamBold,TextSize=16,
  TextColor3=C.text,BackgroundColor3=bg or C.panel2,BorderSizePixel=0,
@@ -242,7 +248,7 @@ content=rounded(make("ScrollingFrame",main,{BackgroundColor3=C.panel,BorderSizeP
 addPadding(content,13,13)
 make("UIListLayout",content,{Padding=UDim.new(0,9),SortOrder=Enum.SortOrder.LayoutOrder})
 
-local tabNames={"Home","Games","Visuals","Combat","Movement","Vehicles","World","Players","Navigation","Utilities","Settings","Diagnostics","Credits"}
+local tabNames={"Home","Games","Game Packs","Visuals","Combat","Movement","Vehicles","World","Players","Navigation","Automation","Utilities","Settings","Diagnostics","Credits"}
 local tabButtons={}
 for _,tab in ipairs(tabNames) do
  local b=rounded(make("TextButton",sidebar,{Text="  "..tab,TextColor3=C.muted,
@@ -925,17 +931,621 @@ local function refreshTheme()
  setTabActive(currentPage)
 end
 
+local packRegistry, packSummary, packEngineCleanup, packEnginePersist={},"No scan yet",function() end,function() end
+local function initGamePacks()
+-- =============================================================
+-- EVVO // GAME PACK ENGINE 2.0.0
+-- Game-aware *client-visible* object searches and actions.
+-- Distinct names and categories for each supported game.
+-- NO server-side bypasses, remote-event guessing or hidden scripts.
+-- =============================================================
+local PACK_DATABASE = [=[
+Blox Fruits|adventure|Fruit=fruit,blox fruit;Chests=chest,treasure;Enemies=bandit,pirate,boss,raider;Quest NPC=quest,npc,dealer
+Brookhaven RP|roleplay|Vehicles=vehicle,car,bike;Locations=school,hospital,police,house;Interactions=door,button,garage;Items=tool,food,prop
+Adopt Me!|simulator|Pets=pet,egg,animal;Gifts=gift,present;Interactables=food,drink,bed,shower;Shops=shop,store,nursery
+Murder Mystery 2|shooter|Dropped Gun=gun,gundrop;Coins=coin,token;Weapons=knife,revolver;Map=exit,door,lobby
+RIVALS|shooter|Equipment=weapon,ammo,crate;Arena=spawn,cover,platform;Objectives=flag,zone,point;Loot=pickup,drop
+Jailbreak|adventure|Robberies=bank,jewelry,museum,casino,tomb,power plant,oil rig,mansion;Loot=crate,loot,cash;Escape=sewer,vent,ladder,escape;Vehicles=garage,vehicle,car,heli
+Steal a Brainrot|simulator|Brainrots=brainrot,unit;Bases=base,plot,zone;Purchases=buy,shop,upgrade;Transport=conveyor,drop,spawn
+Grow a Garden|simulator|Crops=crop,fruit,plant,harvest;Seeds=seed,seedpack;Equipment=sprinkler,watering,gear;Pets=pet,egg,animal
+99 Nights in the Forest|horror|Resources=wood,log,coal,food,scrap;Danger=wolf,cultist,bear,monster;Shelter=campfire,fire,bed,shelter;Loot=chest,crate,supply
+DOORS|horror|Keys=key,lockpick;Doors=door,gate,exit;Safety=wardrobe,closet,hiding;Items=vitamin,battery,flashlight,coin,book,fuse
+Forsaken|horror|Objectives=generator,repair,task;Threats=killer,hunter,monster;Safety=safe,exit,gate;Supplies=medkit,health,tool
+Dandy's World|horror|Machines=machine,extractor,ichor;Items=capsule,tape,item;Enemies=twisted,monster;Exit=elevator,exit,door
+Dress to Impress|roleplay|Stations=hair,makeup,salon,dressing;Outfits=clothes,skirt,dress,shoe;Accessories=hat,bag,accessory;Runway=runway,stage,vote
+Fisch|simulator|Fish Spots=fish,fishing,pond;Equipment=rod,bait,tackle;Shops=merchant,shop,vendor;NPCs=quest,angler,npc
+Blade Ball|shooter|Ball=ball,projectile;Abilities=ability,power;Arena=arena,spawn,wall;Rewards=crate,chest,coin
+BedWars|shooter|Beds=bed,base;Resources=iron,diamond,emerald;Shop=item shop,upgrade shop,vendor;Combat=sword,bow,armor
+Tower of Hell|obby|Checkpoints=checkpoint,stage,level;Platforms=platform,part,step;Hazards=kill,lava,laser;End=finish,goal,top
+The Strongest Battlegrounds|fighting|Training=dummy,training;Combat=arena,ring,spawn;Effects=hitbox,projectile;Shops=shop,emote
+Jujutsu Shenanigans|fighting|Training=dummy,training;Combat=arena,domain;Pickups=pickup,tool;Objectives=point,zone
+Piggy|horror|Keys=key,lock;Doors=door,gate,exit;Items=hammer,wrench,carrot,battery;Threats=piggy,bot,enemy
+Evade|horror|Threats=nextbot,monster,enemy;Revives=revive,downed,heal;Safety=safe,exit,vent;Items=cola,light,flashlight
+Arsenal|shooter|Weapons=weapon,gun,ammo;Pickups=medkit,health,pickup;Map=spawn,teleporter;Objectives=flag,zone
+Phantom Forces|shooter|Weapons=weapon,gun,ammo;Pickups=ammo,crate,drop;Objectives=flag,hill,zone;Map=spawn,cover
+Bee Swarm Simulator|simulator|Tokens=token,honey,ability;Fields=field,flower,patch;Mobs=bug,beetle,spider,vicious;Quests=quest,npc,bear
+Pet Simulator 99|simulator|Breakables=breakable,coin,diamond,crate;Pets=pet,egg;Loot=orb,bag,drop;Shops=merchant,upgrade,shop
+Pet Simulator X|simulator|Coins=coin,gem,diamond;Pets=pet,egg;Drops=orb,loot,bag;Areas=area,portal
+Anime Vanguards|tower defense|Waves=wave,spawn;Enemies=enemy,boss;Tower Spots=place,spot,tower;Rewards=drop,chest
+Anime Defenders|tower defense|Waves=wave,spawn;Enemies=enemy,boss;Summons=summon,unit;Rewards=drop,reward
+King Legacy|adventure|Fruit=fruit,devil;Chests=chest,treasure;Enemies=pirate,marine,boss;Quest NPC=quest,npc,merchant
+Grand Piece Online|adventure|Fruit=fruit,devil;Chests=chest,treasure;Enemies=pirate,marine,boss;NPCs=quest,npc,shop
+Car Crushers 2|driving|Cars=car,vehicle;Crushers=crusher,shredder;Race=track,ramp,finish;Rewards=part,crate,token
+Driving Empire|driving|Cars=car,vehicle;Race=track,checkpoint,finish;Shops=dealer,garage;Collectibles=crate,token,coin
+Greenville|driving|Cars=vehicle,car,truck;Garages=garage,dealership;Services=gas,fuel,repair;Locations=police,station,school
+Emergency Response Liberty County|driving|Vehicles=car,vehicle,firetruck;Services=police,fire,ems;Locations=station,hospital,bank;Interactions=door,call,mission
+Work at a Pizza Place|tycoon|Ingredients=cheese,pepperoni,dough;Stations=oven,order,delivery;Vehicles=car,scooter,truck;Rewards=coin,bonus,present
+Build A Boat For Treasure|tycoon|Chests=chest,treasure;Blocks=block,seat,thruster;Stages=stage,checkpoint,finish;Shops=shop,crate
+Lumber Tycoon 2|tycoon|Trees=tree,wood,log;Axes=axe,tool;Stores=shop,store,woodrus;Transport=truck,vehicle,car
+Restaurant Tycoon 2|tycoon|Customers=customer,guest;Cooking=kitchen,oven,stove;Delivery=delivery,order;Upgrades=upgrade,shop,table
+Theme Park Tycoon 2|tycoon|Rides=ride,coaster,track;Services=shop,stall,food;Guests=guest,visitor;Building=path,entrance,exit
+Tower Defense Simulator|tower defense|Enemies=enemy,zombie,boss;Towers=tower,unit;Waves=wave,spawn;Rewards=crate,drop
+Anime Adventures|tower defense|Enemies=enemy,boss;Units=unit,tower;Waves=wave,spawn;Loot=drop,reward
+Combat Warriors|fighting|Weapons=weapon,sword,axe;Pickups=crate,medkit;Combat=arena,spawn;Objectives=point,zone
+Slap Battles|fighting|Gloves=glove,hand;Arena=arena,island;Pickups=orb,slapple;Rewards=badge,token
+Blue Lock Rivals|sports|Ball=ball,football;Goals=goal,net;Teams=team,spawn;Items=powerup,ability
+Volleyball Legends|sports|Ball=ball,volleyball;Court=court,net;Goals=score,line;Pickups=powerup,item
+Basketball Zero|sports|Ball=ball,basketball;Hoops=hoop,rim,basket;Court=court,line;Extras=powerup,ability
+Pressure|horror|Doors=door,gate,exit;Resources=battery,flashlight,medkit;Safety=locker,closet,hiding;Threats=monster,enemy,creature
+Dead Rails|horror|Fuel=coal,fuel,wood;Loot=crate,chest,valuable;Threats=zombie,wolf,monster;Transport=train,rail,engine
+3008|horror|Food=food,drink,medkit;Furniture=furniture,table,pallet;Threats=employee,staff;Safety=base,light,exit
+Flee the Facility|horror|Computers=computer,terminal;Exits=exit,door,gate;Threats=beast,killer,hammer;Rescue=pod,freeze,capsule
+Natural Disaster Survival|obby|Safety=shelter,roof,house;Pickups=apple,balloon;Threats=volcano,meteor,tsunami;Spawns=spawn,island
+Sonic Speed Simulator|simulator|Rings=ring,coin;Orbs=orb,experience,xp;Chao=chao,pet;Races=race,finish,portal
+Mining Simulator 2|simulator|Ore=ore,stone,gem;Caverns=cave,mine,shaft;Pets=pet,egg;Shops=shop,upgrade
+Bubble Gum Simulator INFINITY|simulator|Bubbles=bubble,orb;Coins=coin,gem;Pets=pet,egg;Shops=shop,upgrade
+Sol's RNG|simulator|Auras=aura,effect;Potions=potion,elixir;Items=item,coin;Stations=craft,shop
+Royale High|roleplay|Classes=class,school,campus;Items=diamond,accessory;Shops=store,shop;Locations=dorm,office
+Welcome to Bloxburg|roleplay|Jobs=job,work,delivery;Vehicles=car,vehicle;Homes=house,plot,door;Shops=shop,store
+PLS DONATE|roleplay|Booths=booth,stand;Buttons=button,purchase;Events=event,stage;Locations=spawn,plaza
+Dungeon Quest|adventure|Enemies=enemy,boss;Loot=chest,drop;Objectives=door,portal,exit;Equipment=weapon,armor
+Dungeon Quest Reborn|adventure|Enemies=enemy,boss;Loot=chest,drop;Objectives=door,portal,exit;Equipment=weapon,armor
+Sword Fights on the Heights|fighting|Weapons=sword,blade;Arena=platform,bridge;Pickups=orb,powerup;Spawns=spawn,point
+Super Doomspire|shooter|Objectives=spire,tower,base;Weapons=rocket,bomb,sword;Pickups=powerup,coin;Hazards=explosion,drop
+Saber Simulator|simulator|Swords=saber,sword;Pets=pet,egg;Rewards=coin,crown;Upgrades=upgrade,shop
+Muscle Legends|simulator|Equipment=weight,bench;Pets=pet,egg;Rewards=coin,gem;Training=training,gym
+My Wood Farm|tycoon|Trees=tree,wood,log;Drops=drop,wood;Buildings=sawmill,farm,upgrade;Vehicles=truck,vehicle
+Practical Basketball|sports|Ball=ball,basketball;Hoops=hoop,rim,basket;Court=court,line;Items=pickup,powerup
+NFL Universe Football|sports|Ball=football,ball;Goal=goal,endzone;Field=field,yard,marker;Extras=pickup,ability
+Shindo Life|adventure|Enemies=enemy,boss;Quests=quest,npc;Scrolls=scroll,drop;Locations=village,portal
+Dragon Adventures|simulator|Dragons=dragon,egg;Resources=resource,food,crop;Quests=quest,npc;Shops=shop,merchant
+Dress to Impress Classic|roleplay|Clothes=clothes,dress,shoe;Accessories=accessory,hat;Stations=hair,makeup;Runway=stage,runway
+Fighting Simulator X|fighting|Training=training,dummy;Rewards=orb,gem;Shops=shop,upgrade;Quests=quest,npc]=]
+packRegistry={}
+local packLookup={}
+local function packNormalize(value)
+ return tostring(value or ""):lower():gsub("[%W_]+", "")
+end
+local function parsePackData()
+ for row in PACK_DATABASE:gmatch("[^\r\n]+") do
+  local name,kind,rawGroups=row:match("^([^|]+)|([^|]+)|(.+)$")
+  if name and rawGroups then
+   local pack={name=name,kind=kind,categories={}}
+   for group in rawGroups:gmatch("[^;]+") do
+    local label,raw=group:match("^([^=]+)=(.+)$")
+    if label and raw then
+     local words={}
+     for term in raw:gmatch("[^,]+") do
+      term=term:lower():match("^%s*(.-)%s*$")
+      if #term>1 then table.insert(words,term) end
+     end
+     if #words>0 then table.insert(pack.categories,{name=label,terms=words}) end
+    end
+   end
+   if #pack.categories>0 then
+    table.insert(packRegistry,pack)
+    packLookup[packNormalize(name)]=pack
+   end
+  end
+ end
+ table.sort(packRegistry,function(a,b) return a.name:lower()<b.name:lower() end)
+end
+parsePackData()
+local packListSearch, packListPage, packPreview, lastPackName="",1,nil,nil
+local packHits, packHighlights = {}, {}
+local packLastScan, packLastPrompt, packLastPath, packLastAlert=0,0,0,0
+packSummary="No scan yet"
+local packFailure=nil
+local packScanStats={scanned=0,matched=0,shown=0,prompts=0}
+local function resolvedPack()
+ local bound=state.bindings[tostring(game.PlaceId)] or state.bindings["u:"..tostring(game.GameId)]
+ if bound and packLookup[packNormalize(bound)] then return packLookup[packNormalize(bound)],"bound" end
+ for _,name in ipairs({currentGameName,gameLookup,game.Name}) do
+  local normalized=packNormalize(name)
+  local exact=packLookup[normalized]
+  if exact then return exact,"detected" end
+  -- Official game titles often add update suffixes or brackets.
+  for _,pack in ipairs(packRegistry) do
+   local key=packNormalize(pack.name)
+   if #key>=9 and normalized:sub(1,#key)==key then return pack,"prefix" end
+  end
+ end
+ return nil,"not supported"
+end
+local function isCurrentPack(pack)
+ if not pack then return false end
+ local active=resolvedPack()
+ return active~=nil and active.name==pack.name
+end
+local function clearPackMarkers()
+ for target,objects in pairs(packHighlights) do
+  for _,o in ipairs(objects) do pcall(function() o:Destroy() end) end
+  packHighlights[target]=nil
+ end
+ packHits={}
+end
+local function packTargetPart(target)
+ if not target or not target.Parent then return nil end
+ if target:IsA("BasePart") then return target end
+ if target:IsA("Model") then
+  return target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart",true)
+ end
+ if target:IsA("ProximityPrompt") then
+  local par=target.Parent
+  if par and par:IsA("Attachment") then par=par.Parent end
+  if par and par:IsA("BasePart") then return par end
+ end
+ return nil
+end
+local function matchCategory(object,pack,chosen)
+ local name=object.Name:lower()
+ if object:IsA("ProximityPrompt") then
+  name=name.." "..tostring(object.ActionText):lower().." "..tostring(object.ObjectText):lower()
+ end
+ for _,category in ipairs(pack.categories) do
+  if not chosen or chosen=="All" or chosen==category.name then
+   for _,needle in ipairs(category.terms) do
+    if name:find(needle,1,true) then return category end
+   end
+  end
+ end
+ return nil
+end
+local function getPackFocus(pack)
+ if not pack then return nil end
+ local name=state.packFocus
+ if name=="All" then return name end
+ for _,cat in ipairs(pack.categories) do if cat.name==name then return name end end
+ return "All"
+end
+local function renderPackMarkers(pack)
+ clearPackMarkers()
+ if not state.packESP then return end
+ local base={color(94,191,246),color(247,191,67),color(131,225,143),color(223,119,242)}
+ for _,hit in ipairs(packHits) do
+  local idx=1
+  for j,cat in ipairs(pack.categories) do if cat.name==hit.group then idx=j end end
+  local col=base[(idx-1)%#base+1]
+  local objects={}
+  local h=make("Highlight",hit.instance,{Name="EVVO_PACK_MARKER",Adornee=hit.instance,
+   FillColor=col,OutlineColor=col,FillTransparency=math.clamp(state.packOpacity,0,1),OutlineTransparency=0.1,
+   DepthMode=Enum.HighlightDepthMode.AlwaysOnTop})
+  table.insert(objects,h)
+  if state.packShowLabels and hit.part then
+   local bill=make("BillboardGui",gui,{Name="EVVO_PACK_LABEL",Adornee=hit.part,
+    AlwaysOnTop=true,Size=UDim2.fromOffset(200,42),StudsOffsetWorldSpace=Vector3.new(0,3,0),
+    MaxDistance=math.max(75,state.packDistance),Enabled=true})
+   local label=text(bill,hit.group.." : "..hit.name..(state.packShowDistances and ("  ["..math.floor(hit.distance).." studs]") or ""),
+    10,true,{Size=UDim2.new(1,0,1,0),TextXAlignment=Enum.TextXAlignment.Center,
+    BackgroundTransparency=.25,BackgroundColor3=C.background,TextColor3=col,ZIndex=30})
+   rounded(label,6)
+   table.insert(objects,bill)
+  end
+  packHighlights[hit.instance]=objects
+ end
+end
+local function scanPackObjects()
+ local pack=resolvedPack()
+ if not pack then
+  clearPackMarkers();packSummary="No matching game pack. Bind one in Game Packs."
+  return
+ end
+ local root=safeRoot(player)
+ if not root then packSummary="Your character has not loaded";return end
+ local chosen=getPackFocus(pack)
+ local limit=math.floor(math.clamp(tonumber(state.packScanLimit) or 12500,1500,20000))
+ local result={}
+ local stats={scanned=0,matched=0,shown=0,prompts=0}
+ local objects=Workspace:GetDescendants()
+ local seen={}
+ for i=1,math.min(#objects,limit) do
+  local item=objects[i]
+  stats.scanned=stats.scanned+1
+  if item:IsA("Model") or item:IsA("BasePart") or item:IsA("ProximityPrompt") then
+   local group=matchCategory(item,pack,chosen)
+   if group then
+    local part=packTargetPart(item)
+    if part then
+     local distance=(part.Position-root.Position).Magnitude
+     if distance<=state.packDistance and distance>=0 then
+      local target=item
+      if item:IsA("ProximityPrompt") then
+       target=part.Parent and part.Parent:IsA("Model") and part.Parent or part
+      end
+      if not seen[target] and #result<math.max(100,state.packMax*5) then
+       seen[target]=true
+       stats.matched=stats.matched+1
+       table.insert(result,{instance=target,part=part,group=group.name,name=item.Name,
+        distance=distance,position=part.Position})
+      end
+     end
+    end
+   end
+  end
+ end
+ table.sort(result,function(a,b) return a.distance<b.distance end)
+ clearPackMarkers()
+ for i=1,math.min(#result,math.floor(state.packMax)) do
+  table.insert(packHits,result[i])
+ end
+ stats.shown=#packHits
+ for _,h in ipairs(packHits) do
+  if h.instance:FindFirstChildWhichIsA("ProximityPrompt",true) then stats.prompts=stats.prompts+1 end
+ end
+ packScanStats=stats
+ packSummary=string.format("%s · %s: %d nearby, %d displayed",pack.name,chosen or "All",stats.matched,stats.shown)
+ packFailure=nil
+ renderPackMarkers(pack)
+ if state.packAlerts and #packHits>0 and packHits[1].distance<=state.packAlertRange
+  and os.clock()-packLastAlert>12 then
+  packLastAlert=os.clock()
+  local h=packHits[1]
+  toast(string.format("%s nearby: %s (%.0f studs)",h.group,h.name,h.distance))
+ end
+ packLastScan=os.clock()
+end
+local function packClosestPrompt()
+ local root=safeRoot(player)
+ if not root then return nil end
+ local best,bestDistance=nil,math.huge
+ for _,hit in ipairs(packHits) do
+  if hit.instance and hit.instance.Parent then
+   local prompt=hit.instance:IsA("ProximityPrompt") and hit.instance
+    or hit.instance:FindFirstChildWhichIsA("ProximityPrompt",true)
+   if prompt and prompt.Enabled then
+    local part=packTargetPart(prompt)
+    local dist=part and (part.Position-root.Position).Magnitude or math.huge
+    if dist<=state.packInteractRange and dist<bestDistance then
+     best=prompt;bestDistance=dist
+    end
+   end
+  end
+ end
+ return best,bestDistance
+end
+local function interactPackOnce(silent)
+ if type(fireproximityprompt)~="function" then
+  packFailure="Madium does not expose fireproximityprompt";
+  if not silent then toast(packFailure) end
+  return false
+ end
+ local pack=resolvedPack()
+ if not pack then if not silent then toast("No active pack for this game") end return false end
+ local prompt=packClosestPrompt()
+ if not prompt then
+  if not silent then toast("No matching reachable ProximityPrompt") end
+  return false
+ end
+ local ok,err=pcall(fireproximityprompt,prompt)
+ if not ok then
+  packFailure=tostring(err)
+  if not silent then toast("Interaction failed; see Diagnostics") end
+  log("Pack prompt: "..tostring(err));return false
+ end
+ if not silent then toast("Interaction attempted: "..prompt.Name) end
+ return true
+end
+local function packMoveOnce()
+ local root=safeRoot(player)
+ local h=myHumanoid()
+ if not h or not root or not packHits[1] then toast("No nearby target to navigate to");return end
+ local target=packHits[1]
+ if target.distance>250 then toast("Target too far; use a waypoint");return end
+ h:MoveTo(target.position)
+ toast("Moving toward "..target.name)
+end
+local function packToolList()
+ local found={}
+ local backpack=player:FindFirstChildOfClass("Backpack")
+ for _,place in ipairs({backpack,player.Character}) do
+  if place then
+   for _,obj in ipairs(place:GetChildren()) do
+    if obj:IsA("Tool") then table.insert(found,obj) end
+   end
+  end
+ end
+ return found
+end
+local function equipMatchingTool(silent)
+ local hum=myHumanoid()
+ if not hum then return false end
+ local keyword=tostring(state.packToolKeyword or ""):lower():match("^%s*(.-)%s*$")
+ if keyword=="" then
+  if not silent then toast("Set a tool name keyword first") end
+  return false
+ end
+ for _,tool in ipairs(packToolList()) do
+  if tool.Name:lower():find(keyword,1,true) then
+   local ok,err=pcall(function() hum:EquipTool(tool) end)
+   if not ok then log("Tool equip: "..tostring(err));return false end
+   if not silent then toast("Equip attempted: "..tool.Name) end
+   return true
+  end
+ end
+ if not silent then toast("No matching Tool is in your inventory") end
+ return false
+end
+local function packLeaderstatsText()
+ local list={}
+ local folder=player:FindFirstChild("leaderstats")
+ if folder then
+  for _,v in ipairs(folder:GetChildren()) do
+   if v:IsA("ValueBase") or v:IsA("IntValue") or v:IsA("NumberValue") or v:IsA("StringValue") then
+    table.insert(list,v.Name..": "..tostring(v.Value))
+   end
+  end
+ end
+ table.sort(list)
+ if #list==0 then return "No replicated leaderstats exposed" end
+ return table.concat(list,"  •  ")
+end
+local function packSnapshot()
+ local names={"packESP","packAlerts","packAutoPrompt","packPathAssist",
+  "packDistance","packOpacity","packMax","packScanHz","packInteractRange",
+  "packInteractDelay","packAlertRange","packScanLimit","packShowLabels","packShowDistances","packFocus",
+  "packAutoEquip","packEquipDelay","packToolKeyword"}
+ local t={}
+ for _,key in ipairs(names) do t[key]=state[key] end
+ return t
+end
+local function packRestore(t)
+ if type(t)~="table" then return false end
+ for k,v in pairs(t) do
+  if default[k]~=nil and type(default[k])==type(v) then state[k]=v end
+ end
+ scheduleSave()
+ return true
+end
+local function packControlStatus(pack)
+ if isCurrentPack(pack) then return "ACTIVE FOR THIS EXPERIENCE" end
+ return "PREVIEW ONLY — BIND TO CURRENT PLACE TO ACTIVATE"
+end
+local function packInstallProfile(pack)
+ state.packProfiles[pack.name]=packSnapshot()
+ scheduleSave();toast("Saved settings for "..pack.name)
+end
+local function packLoadProfile(pack)
+ local profile=state.packProfiles[pack.name]
+ if profile and packRestore(profile) then
+  toast("Loaded "..pack.name.." settings");return true
+ end
+ toast("No saved profile for "..pack.name);return false
+end
+
+pages["Game Packs"]=function()
+ section("Game-specific packs",#packRegistry.." per-game object profiles; features are best-effort and not live-verified.")
+ local active,method=resolvedPack()
+ note("Detected: "..tostring(currentGameName).."  |  Place: "..tostring(game.PlaceId)..
+  "\nActive pack: "..(active and active.name or "NONE").." ("..method..")")
+ local boxLabel=text(content,"SEARCH GAME PACKS",12,true,{TextColor3=accent})
+ local listFrame=make("Frame",content,{Size=UDim2.new(1,-4,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+  BackgroundTransparency=1,ZIndex=23})
+ make("UIListLayout",listFrame,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder})
+ local listCount=text(content,"",11,false,{TextColor3=C.muted})
+ local listConnections={}
+ local function updateList()
+  for _,c in ipairs(listConnections) do pcall(function() c:Disconnect() end) end
+  listConnections={}
+  for _,child in ipairs(listFrame:GetChildren()) do
+   if child:IsA("GuiObject") then child:Destroy() end
+  end
+  local filtered={}
+  local q=packListSearch:lower()
+  for _,pack in ipairs(packRegistry) do
+   if q=="" or pack.name:lower():find(q,1,true) or pack.kind:lower():find(q,1,true) then
+    table.insert(filtered,pack)
+   end
+  end
+  packListPage=math.clamp(packListPage,1,math.max(1,math.ceil(#filtered/8)))
+  listCount.Text=string.format("%d packs found  •  page %d/%d",#filtered,packListPage,math.max(1,math.ceil(#filtered/8)))
+  for i=(packListPage-1)*8+1,math.min(packListPage*8,#filtered) do
+   local entry=filtered[i]
+   local current=isCurrentPack(entry)
+   local action=rounded(make("TextButton",listFrame,{Size=UDim2.new(1,-2,0,35),
+    BackgroundColor3=current and color(56,35,47) or C.panel2,BorderSizePixel=0,
+    Text="  "..(current and "● " or "")..entry.name.."    /  "..entry.kind,
+    Font=Enum.Font.GothamMedium,TextSize=12,TextColor3=C.text,
+    TextXAlignment=Enum.TextXAlignment.Left,ZIndex=24}),7)
+   table.insert(listConnections,action.MouseButton1Click:Connect(function()
+    packPreview=entry.name
+    showPage("Game Packs")
+   end))
+  end
+ end
+ makeTextInput("Find a game pack (press Enter to select)...",packListSearch,function(v,enter)
+  packListSearch=v;packListPage=1
+  updateList()
+ end)
+ makeAction("Previous pack page",function() packListPage=math.max(1,packListPage-1);updateList() end)
+ makeAction("Next pack page",function() packListPage=packListPage+1;updateList() end)
+ updateList()
+ local preview=packLookup[packNormalize(packPreview)] or active
+ if not preview then
+  note("Choose a pack above or bind the current experience from Games. Universal features remain available.")
+  return
+ end
+ section("Selected: "..preview.name,packControlStatus(preview))
+ local labels={}
+ for _,cat in ipairs(preview.categories) do table.insert(labels,cat.name) end
+ note("Specialization: "..preview.kind.."\nTracks: "..table.concat(labels,", "))
+ if not isCurrentPack(preview) then
+  makeAction("Bind this pack to CURRENT Roblox place",function()
+   state.bindings[tostring(game.PlaceId)]=preview.name
+   state.packFocus="All";packPreview=preview.name
+   clearPackMarkers();scheduleSave();showPage("Game Packs")
+   toast("Bound "..preview.name.." to this place")
+  end)
+  note("This button is for renamed/sub-places. Do not bind a pack to an unrelated game.")
+ else
+  section("Live module controls","Local Workspace objects only; game updates may change all matching names.")
+  makeToggle("Highlight tracked objects","packESP")
+  makeToggle("Show markers' labels","packShowLabels")
+  makeToggle("Distance on markers","packShowDistances")
+  makeToggle("Nearby object alerts","packAlerts")
+  makeSlider("Detection range (studs)","packDistance",70,1800,10)
+  makeSlider("ESP fill transparency","packOpacity",0.1,0.95,.05)
+  makeSlider("Maximum on-screen markers","packMax",5,65,5)
+  makeSlider("Scan frequency (scans per sec)","packScanHz",.1,1,.05)
+  makeSlider("Nearby alert radius","packAlertRange",10,220,10)
+  makeChoice("Category", "packFocus",(function()
+   local a={"All"};for _,c in ipairs(preview.categories) do table.insert(a,c.name) end;return a
+  end)())
+  makeAction("SCAN THIS GAME NOW",function()
+   scanPackObjects();toast(packSummary);showPage("Game Packs")
+  end)
+  makeAction("Move toward closest matching object",packMoveOnce)
+  section("Inventory / game telemetry")
+  note(packLeaderstatsText())
+  local ownedTools=packToolList()
+  local names={}
+  for _,tool in ipairs(ownedTools) do table.insert(names,tool.Name) end
+  note("Visible tools: "..(#names>0 and table.concat(names,", ") or "None"))
+  makeTextInput("Tool-name keyword for equip helper",state.packToolKeyword,function(v)
+   state.packToolKeyword=v; scheduleSave()
+  end)
+  makeAction("Equip first matching Tool",function() equipMatchingTool(false) end)
+  section("Per-game settings")
+  makeAction("Save configuration for "..preview.name,function() packInstallProfile(preview) end)
+  makeAction("Restore saved "..preview.name.." profile",function()
+   if packLoadProfile(preview) then showPage("Game Packs") end
+  end)
+  note(packSummary.."\nMatched objects are client-visible only, and naming heuristics may misidentify objects.")
+ end
+end
+
+pages.Automation=function()
+ section("Local automation","ProximityPrompt assistance and navigation in the ACTIVE game's object pack.")
+ local pack=resolvedPack()
+ note("Current pack: "..(pack and pack.name or "NONE").."\nAuto-interaction never calls unknown remotes, bypasses a purchase or grants currency.")
+ makeToggle("Auto interact with matching nearby prompts","packAutoPrompt")
+ makeSlider("Prompt range (studs)","packInteractRange",4,25,1)
+ makeSlider("Minimum delay between attempts (sec)","packInteractDelay",.5,7,.1)
+ makeAction("Interact once with nearest detected prompt",function()
+  if #packHits==0 then scanPackObjects() end
+  interactPackOnce(false)
+ end)
+ makeToggle("Route assist to nearest tracked object","packPathAssist")
+ section("Inventory shortcuts")
+ makeToggle("Auto equip matching Tool (opt-in)","packAutoEquip")
+ makeSlider("Auto equip interval (seconds)","packEquipDelay",2,15,1)
+ makeTextInput("Tool keyword (e.g. sword, rod, axe)",state.packToolKeyword,function(v)
+  state.packToolKeyword=v;scheduleSave()
+ end)
+ makeAction("Equip matching Tool now",function() equipMatchingTool(false) end)
+ makeAction("Move toward nearest matching object once",packMoveOnce)
+ makeAction("Stop ALL pack automation",function()
+  state.packAutoPrompt=false;state.packPathAssist=false;state.packAutoEquip=false
+  scheduleSave();showPage("Automation");toast("Pack automation stopped")
+ end,"danger")
+ section("Compatibility")
+ note("fireproximityprompt: "..(type(fireproximityprompt)=="function" and "exposed by executor" or "NOT available")..
+  "\nWorkspace scans: best-effort, server-hidden entities cannot be enumerated"..
+  "\nLast scan: "..packSummary.."\nErrors: "..tostring(packFailure or "none"))
+ note("Only prompts within the configured range are attempted. They must actually exist and be interactable. Path assist uses Humanoid:MoveTo, not teleportation.")
+end
+
+
+packEngineCleanup=clearPackMarkers
+packEnginePersist=function()
+ if lastPackName then state.packProfiles[lastPackName]=packSnapshot() end
+end
+-- Game pack runtime is throttled; cleanup and refresh are centralized.
+local packTick, packInteractionTick, packRouteTick, packEquipTick=0,0,0,0
+local lastProfileUpdate=0
+connect(RunService.Heartbeat,function(dt)
+ local activePack=resolvedPack()
+ local currentName=activePack and activePack.name or nil
+ if currentName~=lastPackName then
+  -- Preserve per-game customization; never carry live automation into an unrelated game.
+  if lastPackName then state.packProfiles[lastPackName]=packSnapshot() end
+  lastPackName=currentName;clearPackMarkers();packLastScan=0
+  if currentName then
+   local existing=state.packProfiles[currentName]
+   if existing then packRestore(existing)
+   else
+    state.packESP=false;state.packAlerts=false;state.packAutoPrompt=false
+    state.packPathAssist=false;state.packAutoEquip=false;state.packFocus="All"
+   end
+  end
+  scheduleSave()
+ end
+ if not activePack then return end
+ -- Save the current game's profile periodically (coalesced with config writes).
+ if os.clock()-lastProfileUpdate>5 then
+  lastProfileUpdate=os.clock()
+  local nextProfile=packSnapshot()
+  local before=state.packProfiles[activePack.name]
+  local changed=not before
+  if before then
+   for k,v in pairs(nextProfile) do if before[k]~=v then changed=true;break end end
+  end
+  if changed then state.packProfiles[activePack.name]=nextProfile;scheduleSave() end
+ end
+ local required=state.packESP or state.packAlerts or state.packAutoPrompt or state.packPathAssist or state.packAutoEquip
+ if not required then
+  if next(packHighlights) then clearPackMarkers() end
+  return
+ end
+ packTick=packTick+dt
+ local period=1/math.clamp(state.packScanHz or .25,.1,1)
+ if packTick>=period then
+  packTick=0
+  if state.packESP or state.packAlerts or state.packAutoPrompt or state.packPathAssist then
+   scanPackObjects()
+  end
+ end
+ packInteractionTick=packInteractionTick+dt
+ if state.packAutoPrompt and packInteractionTick>=state.packInteractDelay then
+  packInteractionTick=0
+  if type(fireproximityprompt)=="function" then
+   interactPackOnce(true)
+  else
+   state.packAutoPrompt=false;packFailure="fireproximityprompt unavailable"
+   toast("Disabled prompt automation — unsupported API")
+  end
+ end
+ packRouteTick=packRouteTick+dt
+ if state.packPathAssist and packRouteTick>=2 then
+  packRouteTick=0
+  local hum=myHumanoid()
+  local root=safeRoot(player)
+  local hit=packHits[1]
+  if hum and root and hit and hit.distance<=120 and hit.distance>=6 then
+   hum:MoveTo(hit.position)
+  end
+ end
+ packEquipTick=packEquipTick+dt
+ if state.packAutoEquip and packEquipTick>=math.max(2,state.packEquipDelay) then
+  packEquipTick=0
+  equipMatchingTool(true)
+ end
+end)
+
+end
+initGamePacks()
+
 pages.Home=function()
- section("Welcome to EVVO HUB","Search hundreds of game names; universal client tools are separate from game-specific support.")
+ section("Welcome to EVVO HUB","498 catalog entries • 71 game-aware packs • customize per-game tools.")
  note("Current place: "..tostring(game.PlaceId).."   |   Universe: "..tostring(game.GameId).."\nGame: "..tostring(currentGameName))
  local statBar=make("Frame",content,{BackgroundTransparency=1,Size=UDim2.new(1,-4,0,59),ZIndex=23})
- for i,card in ipairs({{tostring(#catalog),"GAMES"},{tostring(#Players:GetPlayers()),"PLAYERS"},{"13","PANELS"}}) do
+ for i,card in ipairs({{tostring(#catalog),"GAMES"},{tostring(#Players:GetPlayers()),"PLAYERS"},{"15","PANELS"}}) do
   local tile=rounded(make("Frame",statBar,{BackgroundColor3=C.panel2,BorderSizePixel=0,
    Position=UDim2.new((i-1)/3,(i-1)*2,0,0),Size=UDim2.new(.31,0,1,0),ZIndex=24}),9)
   text(tile,card[1],19,true,{Position=UDim2.fromOffset(12,4),Size=UDim2.new(1,-20,0,29),TextColor3=accent,ZIndex=25})
   text(tile,card[2],10,true,{Position=UDim2.fromOffset(12,34),Size=UDim2.new(1,-20,0,17),TextColor3=C.muted,ZIndex=25})
  end
  subsectionButton("GAME DIRECTORY",tostring(#catalog).." distinct names • searchable • favorites",function() showPage("Games") end)
+ subsectionButton("GAME-SPECIFIC PACKS","71 configurable game profiles and interactive object tools",function() showPage("Game Packs") end)
  subsectionButton("VISUAL ENGINE","3D highlights, 2D boxes, skeleton, radar and overlays",function() showPage("Visuals") end)
  subsectionButton("MOVEMENT LAB","Speed, jump, flight, noclip and saved positions",function() showPage("Movement") end)
  subsectionButton("WORLD SCANNER","Configurable keyword-based object markers",function() showPage("World") end)
@@ -945,7 +1555,7 @@ pages.Home=function()
  makeToggle("Show mini radar","radar")
  makeToggle("Performance HUD","hud")
  makeAction("Save all settings",function() toast(saveSettings() and "Settings saved" or "Session settings only") end)
- note("Scripts are not downloaded from unknown script websites. The hub ships with auditable built-in modules. Catalog ≠ game exploit support.")
+ note("Game packs identify visible objects and offer best-effort local actions. They are not verified bypasses of server checks. No untrusted third-party scripts are downloaded.")
 end
 
 pages.Games=function()
@@ -1309,9 +1919,11 @@ pages.Diagnostics=function()
  supported("writefile",type(writefile)=="function")
  supported("setclipboard",type(setclipboard)=="function")
  supported("mouse1click",type(mouse1click)=="function")
+ supported("fireproximityprompt",type(fireproximityprompt)=="function")
+ note("Game profiles available: "..#packRegistry..". Live in-game validation still required. Last pack scan: "..packSummary)
  supported("Local camera",Workspace.CurrentCamera~=nil)
  section("Module status")
- note("Built-in: UI, catalog, favorites, profiles, ESP, 2D radar, camera aim, movement, vehicle telemetry, world scanner, spectate, waypoints, diagnostics.\nNOT INCLUDED: verified game-specific exploit adapters, cash duplication, remote robbery scripts, weapon hooks.")
+ note("Built-in: UI, catalog, 71 game object profiles, local prompt assist, route assist, ESP, movement, vehicle telemetry, spectate, settings and diagnostics.\nNo live-verified game-specific bypasses, money duplication, hidden remotes or server weapon hooks.")
  makeAction("Run GUI smoke test",function()
   local valid=gui.Parent==pg and main.Parent==gui and content.Parent==main
   toast(valid and "GUI structure OK" or "GUI hierarchy failed")
@@ -1332,8 +1944,8 @@ end
 pages.Credits=function()
  section("EVVO HUB","UNIVERSAL EDITION // VERSION "..VERSION)
  note("╔  EVVO.JAILBREAK\n╠  PROJECT: EVVO HUB\n╠  DEVELOPER: EVVO\n╚  OWNED BY EVVO")
- note("Source architecture: standalone single-file Luau. GUI and game tools use Roblox client APIs. No external UI library or downloaded third-party exploits.")
- note("Game names are used as searchable discovery labels. Inclusion does not claim ownership, endorsement, live verification, or a working per-game cheat.")
+ note("Source architecture: standalone single-file Luau with "..#packRegistry.." data-driven game packs and an isolated client-side automation engine. No third-party remote scripts.")
+ note("71 game packs provide different local object searches and optional client assistance, all untested in live games. The other catalog entries are names only. No game creator endorsement.")
  makeAction("Open game directory",function() showPage("Games") end)
  makeAction("Show version in console",function() print("[EVVO HUB] v"..VERSION.." // OWNED BY EVVO") end)
 end
@@ -1352,6 +1964,7 @@ showPage=function(name)
   World="KEYWORD SEARCH • LOCAL OBJECT MARKERS",Players="PLAYER LIST • CAMERA SPECTATE",
   Navigation="WAYPOINTS • LOCAL MARKERS",Utilities="PROFILES • TELEMETRY • PERFORMANCE",
   Settings="THEME • KEYBINDS • EXPORT",Diagnostics="API CAPABILITIES • ERROR LOG",
+  ["Game Packs"]="71 GAME PROFILES • SEARCH • FEATURES", Automation="SAFE LOCAL PROMPTS • ROUTE ASSIST",
   Credits="EVVO // OWNED BY EVVO"})[name] or "EVVO HUB"
  protected(pages[name])
 end
@@ -1552,11 +2165,13 @@ end)
 -- Restore all modified state and disconnect all owned events on shutdown.
 local function cleanup()
  if not alive then return end
+ pcall(packEnginePersist)
  alive=false
  pcall(saveSettings)
  stopFly()
  pcall(stopSpectate)
  pcall(clearWorld)
+ pcall(packEngineCleanup)
  for part,was in pairs(noClipParts) do
   if part and part.Parent then pcall(function() part.CanCollide=was end) end
  end
@@ -1582,9 +2197,9 @@ protected(function()
  showPage("Home")
  refreshTheme()
  print("[EVVO HUB] v"..VERSION.." ONLINE // OWNED BY EVVO")
- print("[EVVO HUB] Catalog:",#catalog,"names;",#categoryNames-1,"categories")
+ print("[EVVO HUB] Catalog:",#catalog,"names;",#categoryNames-1,"categories;",#packRegistry,"game packs")
  print("[EVVO HUB] PlayerGui:",gui:GetFullName())
- toast("EVVO HUB ONLINE // "..#catalog.." games indexed")
+ toast("EVVO HUB V2 // "..#packRegistry.." game packs ready")
 end)
 task.spawn(function()
  local ok, info=pcall(function()
@@ -1594,6 +2209,6 @@ task.spawn(function()
   currentGameName=info.Name
   local bound=state.bindings[tostring(game.PlaceId)] or state.bindings["u:"..tostring(game.GameId)]
   if not bound and catalogIndex[info.Name:lower()] then gameLookup=info.Name end
-  if alive and currentPage=="Home" then showPage("Home") end
+  if alive and (currentPage=="Home" or currentPage=="Game Packs") then showPage(currentPage) end
  end
 end)
